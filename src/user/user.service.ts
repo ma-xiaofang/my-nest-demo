@@ -20,7 +20,8 @@ import { QueryUserDto } from './dto/query-user.dto'
           role: dto.role ?? 'user',
         },
       })
-      return { success: true, data: user }
+      console.log('创建用户:', user)
+      return { message: '创建成功' }
     }
 
     // ─── 分页查询用户列表（支持搜索过滤）─────────────────
