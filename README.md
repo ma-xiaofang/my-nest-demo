@@ -1,4 +1,4 @@
-# my-nest-demo
+# LangChain AI大模型应用开发 NestJS版DEMO
 
 一个用于学习与演示的 **NestJS + Prisma + PostgreSQL + LangChain + Vue 3** 全栈项目：包含用户 CRUD、基于 **LangChain** 对接 **DeepSeek（OpenAI 兼容接口）** 的流式聊天，以及会话与消息的持久化。
 
