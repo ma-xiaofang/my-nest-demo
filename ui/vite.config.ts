@@ -20,6 +20,10 @@ export default defineConfig({
         target: "http://127.0.0.1:3009",
         changeOrigin: true,
       },
+      "/chat-sessions": {
+        target: "http://127.0.0.1:3009",
+        changeOrigin: true,
+      },
     },
   },
 });

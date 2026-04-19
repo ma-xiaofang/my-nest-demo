@@ -1,145 +1,89 @@
-import { BadRequestException, Body, Controller, Post, Res } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import { LlmService } from './llm.service';
 import type { Response } from 'express';
 import {
-  chatCompletionChunk,
-  chatCompletionResponse,
-  newChatcmplId,
-  toLangChainMessages,
-  type OpenAiChatCompletionRequest,
-} from './openai-chat-compat';
+  applyPlainStreamHeaders,
+  applySseHeaders,
+  pipeTextIterableToOpenAiSse,
+} from './utils/stream-http';
+
+type ChatBody = { message: string; sessionId?: string };
 
 @Controller()
 export class LlmController {
-    constructor(private readonly llmService: LlmService) {}
-    /**
-     * 聊天流式输出
-     * @param body 请求体
-     * @param response 响应
-     * @returns 裸流式输出，需要前端自己处理
-     */
-    @Post('/chat-stream')
-    async chatStream(@Body() body: { message: string }, @Res() response: Response) {
-        // 设置响应头
-        response.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        response.setHeader('Cache-Control', 'no-cache');
-        response.setHeader('Connection', 'keep-alive');
-        response.setHeader('X-Accel-Buffering', 'no');
-        response.setHeader('Transfer-Encoding', 'chunked');
-        // 流式输出
-        for await (const chunk of this.llmService.chatStream(body.message)) {
-            response.write(chunk as string);
-        }
-        // 结束响应
-        response.end();
-    }
-    /**
-     * 聊天SSE输出
-     * @param body 请求体
-     * @param response 响应
-     * @returns SSE输出
-     */
-    @Post('/chat-sse')
-    async chatSSE(@Body() body: { message: string }, @Res() response: Response) {
-        // 设置响应头
-        response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-        response.setHeader('Cache-Control', 'no-cache, no-transform');// 不缓存，不转换
-        response.setHeader('Connection', 'keep-alive');
-        // nginx：关闭代理缓冲，SSE/分块才能尽快到达客户端（无 nginx 时可忽略）
-        response.setHeader('X-Accel-Buffering', 'no');
-        // 流式输出，如果出错则写入错误信息
-        try {
-            //循环输出
-            for await (const chunk of this.llmService.chatStream(body.message)) {
-                const text = typeof chunk === 'string' ? chunk : String(chunk);
-                // 写入响应，格式为data: {text: text}
-                response.write(`data: ${JSON.stringify({ text })}\n\n`);
-            }
-            // 结束响应标志
-            response.write('data: [DONE]\n\n');
-        } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            response.write(`event: error\ndata: ${JSON.stringify({ message })}\n\n`);
-        }
-        response.end();
-    }
+  constructor(private readonly llmService: LlmService) {}
 
-    /**
-     * OpenAI 兼容：Chat Completions（支持 stream: true SSE / stream: false JSON）
-     * @see https://platform.openai.com/docs/api-reference/chat/create
-     */
-    @Post('/v1/chat/completions')
-    async openAiChatCompletions(
-        @Body() body: OpenAiChatCompletionRequest,
-        @Res() res: Response,
-    ) {
-        if (!body?.messages?.length) {
-            throw new BadRequestException('messages is required and must be non-empty');
-        }
-        const lcMessages = toLangChainMessages(body.messages);
-        const id = newChatcmplId();
-        const created = Math.floor(Date.now() / 1000);
-        const modelName = body.model ?? this.llmService.getDefaultModelName();
-
-        if (body.stream === true) {
-            res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-            res.setHeader('Cache-Control', 'no-cache, no-transform');
-            res.setHeader('Connection', 'keep-alive');
-            res.setHeader('X-Accel-Buffering', 'no');
-            try {
-                res.write(
-                    `data: ${JSON.stringify(
-                        chatCompletionChunk({
-                            id,
-                            created,
-                            model: modelName,
-                            delta: { role: 'assistant' },
-                            finish_reason: null,
-                        }),
-                    )}\n\n`,
-                );
-                for await (const piece of this.llmService.chatStreamFromMessages(lcMessages, body.model)) {
-                    if (!piece) continue;
-                    res.write(
-                        `data: ${JSON.stringify(
-                            chatCompletionChunk({
-                                id,
-                                created,
-                                model: modelName,
-                                delta: { content: piece },
-                                finish_reason: null,
-                            }),
-                        )}\n\n`,
-                    );
-                }
-                res.write(
-                    `data: ${JSON.stringify(
-                        chatCompletionChunk({
-                            id,
-                            created,
-                            model: modelName,
-                            delta: {},
-                            finish_reason: 'stop',
-                        }),
-                    )}\n\n`,
-                );
-                res.write('data: [DONE]\n\n');
-            } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
-                res.write(`data: ${JSON.stringify({ error: { message, type: 'api_error' } })}\n\n`);
-            }
-            res.end();
-            return;
-        }
-
-        const content = await this.llmService.chatFromMessages(lcMessages, body.model);
-        res.json(
-            chatCompletionResponse({
-                id,
-                created,
-                model: modelName,
-                content,
-            }),
-        );
+  /**
+   * 拉取某会话的消息列表（按创建时间升序）
+   */
+  @Get('/chat-sessions/:sessionId/messages')
+  async getSessionMessages(@Param('sessionId') sessionId: string) {
+    const sid = sessionId?.trim();
+    if (!sid) {
+      throw new BadRequestException('sessionId 不能为空');
     }
+    return this.llmService.getSessionMessages(sid);
+  }
+
+  /**
+   * 查询会话列表（最近更新在前）
+   * @param userId 可选，只查该用户的会话
+   * @param take 条数上限，默认 50，最大 100
+   */
+  @Get('/chat-sessions')
+  async listChatSessions(
+    @Query('userId') userIdRaw?: string,
+    @Query('take') takeRaw?: string,
+  ) {
+    const take = Math.min(100, Math.max(1, parseInt(takeRaw ?? '50', 10) || 50));
+    let userId: number | undefined;
+    if (userIdRaw !== undefined && userIdRaw !== '') {
+      userId = parseInt(userIdRaw, 10);
+      if (!Number.isFinite(userId)) {
+        throw new BadRequestException('userId 必须是数字');
+      }
+    }
+    return this.llmService.listChatSessions({ userId, take });
+  }
+
+  /**
+   * 聊天流式输出
+   * @param body 请求体
+   * @param response 响应
+   * @returns 裸流式输出，需要前端自己处理
+   */
+  @Post('/chat-stream')
+  async chatStream(@Body() body: ChatBody, @Res() response: Response) {
+    applyPlainStreamHeaders(response);
+    for await (const chunk of this.llmService.chatStream(
+      body.message,
+      body.sessionId,
+    )) {
+      response.write(chunk as string);
+    }
+    response.end();
+  }
+
+  /**
+   * 聊天 SSE：OpenAI `chat.completion.chunk` 帧
+   */
+  @Post('/chat-sse')
+  async chatSSE(@Body() body: ChatBody, @Res() response: Response) {
+    applySseHeaders(response);
+    await pipeTextIterableToOpenAiSse(
+      response,
+      this.llmService.getDefaultModelName(),
+      this.llmService.chatStream(body.message, body.sessionId),
+    );
+    response.end();
+  }
 }
