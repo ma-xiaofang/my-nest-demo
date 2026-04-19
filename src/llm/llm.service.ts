@@ -16,11 +16,6 @@ import {
 } from '@langchain/core/messages';
 import { ConfigService } from '@nestjs/config';
 
-/** DeepSeek OpenAI 兼容接口默认地址（可被环境变量覆盖） */
-const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
-/** 默认模型名，对应 DeepSeek Chat */
-const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
-
 /** 编译后位于 dist/llm/，与 nest-cli 复制的 prompts 相对路径一致 */
 const SESSION_SYSTEM_PROMPT = readFileSync(
   join(__dirname, 'prompts', 'session-system.md'),
@@ -38,14 +33,10 @@ export class LlmService {
   ) {
     // 使用环境变量中的密钥与可选 baseURL/model，便于切换自建网关
     this.chatModel = new ChatOpenAI({
-      apiKey: this.configService.get<string>('DEEPSEEK_API_KEY'),
-      model:
-        this.configService.get<string>('DEEPSEEK_MODEL') ??
-        DEFAULT_DEEPSEEK_MODEL,
+      apiKey: this.configService.get<string>('QWEN_API_KEY'),
+      model: this.configService.get<string>('QWEN_MODEL'),
       configuration: {
-        baseURL:
-          this.configService.get<string>('DEEPSEEK_BASE_URL') ??
-          DEFAULT_DEEPSEEK_BASE_URL,
+        baseURL: this.configService.get<string>('QWEN_BASE_URL'),
       },
     });
   }
@@ -187,7 +178,8 @@ export class LlmService {
     user: string,
     assistant: string,
   ): Promise<void> {
-    //使用标题生成模板，生成标题
+
+    //创建LangChain链，使用标题生成模板，生成标题
     const chain = this.sessionTitlePrompt
       .pipe(this.chatModel)
       .pipe(this.stringOutputParser);
