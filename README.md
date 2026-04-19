@@ -8,9 +8,8 @@
 >
 > **后续**：**RAG（检索增强生成）** 与  WorkFlow **工作流**；具体排期与实现以仓库代码与变更记录为准。
 
-聊天助手：新会话与侧栏历史
-
-聊天助手：多轮对话与 Markdown 代码块
+![聊天助手：新会话与侧栏历史](screenshots/image0.png)
+![聊天助手：多轮对话与 Markdown 代码块](screenshots/image1.png)
 
 ---
 
