@@ -2,6 +2,8 @@
 
 一个用于学习与演示的 **NestJS + Prisma + PostgreSQL + LangChain + Vue 3** 全栈项目：包含用户 CRUD、基于 **LangChain** 对接 **DeepSeek（OpenAI 兼容接口）** 的流式聊天，以及会话与消息的持久化。
 
+> **注意**：运行本项目需要先安装并可用数据库（PostgreSQL），并完成迁移与 `DATABASE_URL` 配置（详见下文「环境要求」「快速开始」）。
+
 ## 界面预览
 
 > **当前**：已实现 **聊天助手**（流式对话、会话与消息持久化、前端聊天页与侧栏历史等，见下方截图）。
@@ -10,6 +12,7 @@
 
 ![聊天助手：新会话与侧栏历史](screenshots/image0.png)
 ![聊天助手：多轮对话与 Markdown 代码块](screenshots/image1.png)
+![PostgreSQL：`chat_sessions` 会话表数据（Navicat）](screenshots/image3.png)
 
 ---
 
