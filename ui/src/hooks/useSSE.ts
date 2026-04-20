@@ -1,9 +1,11 @@
 import { onUnmounted, ref } from "vue";
 
+export type SseStreamDelta = { content?: string; reasoning?: string };
+
 /** 解析单条 `data:` 负载：OpenAI `chat.completion.chunk` 或流内 `error` */
 function handleSseDataLine(
   dataLine: string,
-  onText: (t: string) => void,
+  onDelta: (d: SseStreamDelta) => void,
   onError: (m: string) => void,
 ): void {
   if (dataLine === "[DONE]") return;
@@ -16,21 +18,32 @@ function handleSseDataLine(
   if (!parsed || typeof parsed !== "object") return;
   const o = parsed as {
     error?: { message?: string };
-    choices?: Array<{ delta?: { content?: string | null } }>;
+    choices?: Array<{
+      delta?: {
+        content?: string | null;
+        reasoning_content?: string | null;
+      };
+    }>;
   };
   if (o.error) {
     onError(o.error.message ?? JSON.stringify(o.error));
     return;
   }
-  const content = o.choices?.[0]?.delta?.content;
-  if (typeof content === "string" && content.length > 0) {
-    onText(content);
+  const delta = o.choices?.[0]?.delta;
+  if (!delta) return;
+  const piece: SseStreamDelta = {};
+  const c = delta.content;
+  const r = delta.reasoning_content;
+  if (typeof c === "string" && c.length > 0) piece.content = c;
+  if (typeof r === "string" && r.length > 0) piece.reasoning = r;
+  if (piece.content !== undefined || piece.reasoning !== undefined) {
+    onDelta(piece);
   }
 }
 
 function appendSseBlocks(
   buffer: string,
-  onText: (t: string) => void,
+  onDelta: (d: SseStreamDelta) => void,
   onError: (m: string) => void,
 ): string {
   const parts = buffer.split("\n\n");
@@ -45,7 +58,7 @@ function appendSseBlocks(
     }
     if (dataLines.length === 0) continue;
     const payload = dataLines.join("\n");
-    handleSseDataLine(payload, onText, onError);
+    handleSseDataLine(payload, onDelta, onError);
   }
   return rest;
 }
@@ -57,15 +70,15 @@ export interface UseSSEStartParams {
 }
 
 export interface UseSSEOptions {
-  /** 每个解析出的文本增量（与 text ref 累加同步触发） */
-  onChunk?: (chunk: string) => void;
+  /** 每个解析出的正文/思考增量（与 text ref 的正文累加同步触发） */
+  onDelta?: (d: SseStreamDelta) => void;
   /** 流内错误（OpenAI 形 `data: {"error":{...}}` 等） */
   onStreamError?: (message: string) => void;
 }
 
 /**
  * 通过 fetch + ReadableStream 消费 **POST** 返回的 `text/event-stream`
- *（解析 OpenAI `chat.completion.chunk`：`choices[0].delta.content`）。
+ *（解析 OpenAI `chat.completion.chunk`：`delta.content` 与扩展字段 `delta.reasoning_content`）。
  */
 export function useSSE(
   url: string | (() => string),
@@ -124,9 +137,9 @@ export function useSSE(
         buffer += decoder.decode(value, { stream: true });
         buffer = appendSseBlocks(
           buffer,
-          (chunk) => {
-            text.value += chunk;
-            options.onChunk?.(chunk);
+          (d) => {
+            if (d.content) text.value += d.content;
+            options.onDelta?.(d);
           },
           (m) => {
             error.value = m;

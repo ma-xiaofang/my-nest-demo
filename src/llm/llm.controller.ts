@@ -64,11 +64,17 @@ export class LlmController {
   @Post('/chat-stream')
   async chatStream(@Body() body: ChatBody, @Res() response: Response) {
     applyPlainStreamHeaders(response);
-    for await (const chunk of this.llmService.chatStream(
+    for await (const piece of this.llmService.chatStream(
       body.message,
       body.sessionId,
     )) {
-      response.write(chunk as string);
+      const line = JSON.stringify({
+        ...(piece.content ? { c: piece.content } : {}),
+        ...(piece.reasoning ? { r: piece.reasoning } : {}),
+      });
+      if (line !== '{}') {
+        response.write(`${line}\n`);
+      }
     }
     response.end();
   }

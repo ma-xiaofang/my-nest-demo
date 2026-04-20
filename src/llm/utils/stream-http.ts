@@ -5,12 +5,19 @@ function newChatcmplId(): string {
   return `chatcmpl-${randomBytes(12).toString('hex')}`;
 }
 
+/** 单帧可同时带正文与思考增量（DashScope `reasoning_content` 映射为扩展字段） */
+export type StreamTextPiece = { content?: string; reasoning?: string };
+
 /** OpenAI 流式帧：`chat.completion.chunk` */
 function chatCompletionChunk(params: {
   id: string;
   created: number;
   model: string;
-  delta: { role?: string; content?: string | null };
+  delta: {
+    role?: string;
+    content?: string | null;
+    reasoning_content?: string | null;
+  };
   finish_reason: string | null;
 }) {
   return {
@@ -49,12 +56,13 @@ function writeSseData(res: Response, payload: unknown): void {
 }
 
 /**
- * 将字符串增量异步流写成 OpenAI 形 `chat.completion.chunk` SSE（含首帧、`[DONE]`）。
+ * 将正文/思考增量异步流写成 OpenAI 形 `chat.completion.chunk` SSE（含首帧、`[DONE]`）。
+ * `source` 可为字符串（仅正文）或 `{ content?, reasoning? }`。
  */
 export async function pipeTextIterableToOpenAiSse(
   res: Response,
   modelName: string,
-  source: AsyncIterable<string | unknown>,
+  source: AsyncIterable<string | StreamTextPiece | unknown>,
 ): Promise<void> {
   const id = newChatcmplId();
   const created = Math.floor(Date.now() / 1000);
@@ -70,15 +78,33 @@ export async function pipeTextIterableToOpenAiSse(
       }),
     );
     for await (const chunk of source) {
-      const piece = typeof chunk === 'string' ? chunk : String(chunk);
-      if (!piece) continue;
+      let content: string | undefined;
+      let reasoning: string | undefined;
+      if (typeof chunk === 'string') {
+        if (chunk) content = chunk;
+      } else if (
+        chunk !== null &&
+        typeof chunk === 'object' &&
+        !Array.isArray(chunk)
+      ) {
+        const o = chunk as StreamTextPiece;
+        if (o.content) content = o.content;
+        if (o.reasoning) reasoning = o.reasoning;
+      } else {
+        const s = String(chunk);
+        if (s) content = s;
+      }
+      if (!content && !reasoning) continue;
       writeSseData(
         res,
         chatCompletionChunk({
           id,
           created,
           model: modelName,
-          delta: { content: piece },
+          delta: {
+            ...(content !== undefined ? { content } : {}),
+            ...(reasoning !== undefined ? { reasoning_content: reasoning } : {}),
+          },
           finish_reason: null,
         }),
       );

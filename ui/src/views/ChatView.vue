@@ -13,7 +13,14 @@ import { useSSE } from "@/hooks/useSSE";
 
 type StreamMode = "plain" | "sse";
 
-type ChatMsg = { role: "user" | "assistant"; content: string };
+type ChatMsg = {
+  role: "user" | "assistant";
+  content: string;
+  /** 模型思考链（DashScope reasoning）；仅助手消息 */
+  reasoning?: string;
+  /** 类 Gemini：流结束后默认折叠思考块 */
+  reasoningCollapsed?: boolean;
+};
 
 type ChatSessionRow = {
   id: string;
@@ -86,9 +93,14 @@ function apiBase(): string {
 }
 
 const sse = useSSE(() => `${apiBase()}/chat-sse`, {
-  onChunk(chunk: string) {
+  onDelta(d) {
     const last = messages.value[messages.value.length - 1];
-    if (last?.role === "assistant") last.content += chunk;
+    if (last?.role !== "assistant") return;
+    if (d.content) last.content += d.content;
+    if (d.reasoning) {
+      last.reasoning = (last.reasoning ?? "") + d.reasoning;
+      last.reasoningCollapsed = false;
+    }
   },
 });
 
@@ -129,7 +141,13 @@ function scrollToBottom() {
 watch(messages, () => scrollToBottom(), { deep: true, flush: "post" });
 
 watch(busy, (on, wasOn) => {
-  if (wasOn && !on) scrollToBottom();
+  if (wasOn && !on) {
+    const last = messages.value[messages.value.length - 1];
+    if (last?.role === "assistant" && last.reasoning?.trim()) {
+      last.reasoningCollapsed = true;
+    }
+    scrollToBottom();
+  }
 });
 
 function formatSessionTime(iso: string): string {
@@ -215,6 +233,12 @@ function trimFailedPair(restoreInput: boolean) {
   }
 }
 
+function toggleReasoningCollapse(i: number) {
+  const msg = messages.value[i];
+  if (msg?.role !== "assistant") return;
+  msg.reasoningCollapsed = !(msg.reasoningCollapsed ?? false);
+}
+
 async function send() {
   const message = input.value.trim();
   if (!message || busy.value) return;
@@ -228,7 +252,11 @@ async function send() {
     await sse.start({ body: { message, sessionId: sessionId.value } });
     if (sse.error.value) {
       const last = messages.value[messages.value.length - 1];
-      if (last?.role === "assistant" && !last.content.trim()) {
+      if (
+        last?.role === "assistant" &&
+        !last.content.trim() &&
+        !last.reasoning?.trim()
+      ) {
         trimFailedPair(true);
       }
     } else {
@@ -266,12 +294,48 @@ async function send() {
     }
 
     const decoder = new TextDecoder("utf-8");
+    let lineBuf = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      const last = messages.value[messages.value.length - 1];
-      if (last?.role === "assistant") last.content += chunk;
+      lineBuf += decoder.decode(value, { stream: true });
+      const lines = lineBuf.split("\n");
+      lineBuf = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let o: { c?: string; r?: string };
+        try {
+          o = JSON.parse(line) as { c?: string; r?: string };
+        } catch {
+          error.value = "流解析失败（非 NDJSON）";
+          trimFailedPair(true);
+          return;
+        }
+        const last = messages.value[messages.value.length - 1];
+        if (last?.role !== "assistant") continue;
+        if (typeof o.c === "string" && o.c) last.content += o.c;
+        if (typeof o.r === "string" && o.r) {
+          last.reasoning = (last.reasoning ?? "") + o.r;
+          last.reasoningCollapsed = false;
+        }
+      }
+    }
+    if (lineBuf.trim()) {
+      try {
+        const o = JSON.parse(lineBuf) as { c?: string; r?: string };
+        const last = messages.value[messages.value.length - 1];
+        if (last?.role === "assistant") {
+          if (typeof o.c === "string" && o.c) last.content += o.c;
+          if (typeof o.r === "string" && o.r) {
+            last.reasoning = (last.reasoning ?? "") + o.r;
+            last.reasoningCollapsed = false;
+          }
+        }
+      } catch {
+        error.value = "流解析失败（末尾不完整）";
+        trimFailedPair(true);
+        return;
+      }
     }
     void fetchSessions();
   } catch (e) {
@@ -651,6 +715,42 @@ const headerSessionTitle = computed(() => {
                 v-else
                 class="w-full max-w-full text-[#1f1f1f] dark:text-[#e3e3e3]"
               >
+                <div
+                  v-if="msg.reasoning?.trim()"
+                  class="mb-3 overflow-hidden rounded-2xl border border-violet-200/90 bg-gradient-to-b from-violet-50/95 to-[#f3f0ff]/60 text-[#444746] shadow-sm dark:border-violet-900/45 dark:from-[#252536]/95 dark:to-[#1a1a22]/70 dark:text-[#c4c7c5]"
+                >
+                  <button
+                    type="button"
+                    class="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-medium text-[#5f6368] transition hover:bg-black/[0.04] dark:text-[#9aa0a6] dark:hover:bg-white/[0.05]"
+                    :aria-expanded="msg.reasoningCollapsed !== true"
+                    @click="toggleReasoningCollapse(i)"
+                  >
+                    <svg
+                      class="h-4 w-4 shrink-0 text-violet-600 transition-transform duration-200 dark:text-violet-400"
+                      :class="msg.reasoningCollapsed === true ? '' : 'rotate-90'"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"
+                      />
+                    </svg>
+                    <span>思考过程</span>
+                    <span
+                      v-if="busy && i === messages.length - 1"
+                      class="ml-auto text-[11px] font-normal tabular-nums text-violet-700/85 dark:text-violet-300/90"
+                    >进行中</span>
+                  </button>
+                  <div
+                    v-show="msg.reasoningCollapsed !== true"
+                    class="max-h-[min(40vh,320px)] overflow-y-auto overscroll-contain border-t border-violet-200/70 px-3 py-2.5 dark:border-violet-900/40"
+                  >
+                    <pre
+                      class="whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-[#3c4043] dark:text-[#babfc4]"
+                    >{{ msg.reasoning }}</pre>
+                  </div>
+                </div>
                 <MarkdownBody v-if="msg.content" :source="msg.content" />
                 <span
                   v-else-if="busy && i === messages.length - 1"

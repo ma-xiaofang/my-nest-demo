@@ -11,10 +11,12 @@ import {
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import {
   AIMessage,
+  AIMessageChunk,
   HumanMessage,
   type BaseMessage,
 } from '@langchain/core/messages';
 import { ConfigService } from '@nestjs/config';
+import type { StreamTextPiece } from './utils/stream-http';
 
 /** 编译后位于 dist/llm/，与 nest-cli 复制的 prompts 相对路径一致 */
 const SESSION_SYSTEM_PROMPT = readFileSync(
@@ -22,23 +24,127 @@ const SESSION_SYSTEM_PROMPT = readFileSync(
   'utf8',
 ).trim();
 
-/** 封装 DeepSeek（OpenAI SDK 兼容）调用、会话持久化与标题生成 */
+/** 封装通义千问（DashScope OpenAI 兼容）调用、会话持久化与标题生成 */
 @Injectable()
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
   private readonly chatModel: ChatOpenAI;
+  /** 标题生成不走联网，避免检索计费与不可控外部信息 */
+  private readonly chatModelForTitle: ChatOpenAI;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    // 使用环境变量中的密钥与可选 baseURL/model，便于切换自建网关
+    const apiKey = this.configService.get<string>('QWEN_API_KEY')?.trim();
+    const model = this.configService.get<string>('QWEN_MODEL')?.trim();
+    const baseURL = this.configService.get<string>('QWEN_BASE_URL')?.trim();
+    const enableSearch = this.isEnvTruthy(
+      this.configService.get<string>('QWEN_ENABLE_SEARCH'),
+    );
+    const enableThinking = this.parseOptionalThinkingFlag(
+      this.configService.get<string>('QWEN_ENABLE_THINKING'),
+    );
+
+    const baseFields = {
+      apiKey,
+      model,
+      configuration: { baseURL },
+    };
+
+    const chatModelKwargs: Record<string, unknown> = {};
+    if (enableSearch) chatModelKwargs.enable_search = true;
+    if (enableThinking !== undefined) {
+      chatModelKwargs.enable_thinking = enableThinking;
+    }
+
+    // 百炼 Chat Completions：enable_search 见 https://help.aliyun.com/zh/model-studio/web-search
+    // enable_thinking 见 https://docs.qwencloud.com/developer-guides/text-generation/thinking
     this.chatModel = new ChatOpenAI({
-      apiKey: this.configService.get<string>('QWEN_API_KEY'),
-      model: this.configService.get<string>('QWEN_MODEL'),
-      configuration: {
-        baseURL: this.configService.get<string>('QWEN_BASE_URL'),
-      },
+      ...baseFields,
+      modelKwargs:
+        Object.keys(chatModelKwargs).length > 0 ? chatModelKwargs : undefined,
     });
+    /** 标题短句生成固定关思考，降低延迟与费用 */
+    this.chatModelForTitle = new ChatOpenAI({
+      ...baseFields,
+      modelKwargs: { enable_thinking: false },
+    });
+  }
+
+  /**
+   * 解析 `QWEN_ENABLE_THINKING`：未设置或空字符串时不传参（走平台默认）；
+   * `1`/`true`/`yes`/`on` 为开；`0`/`false`/`no`/`off` 为关。
+   */
+  private parseOptionalThinkingFlag(
+    raw: string | undefined,
+  ): boolean | undefined {
+    if (raw === undefined) return undefined;
+    const t = raw.trim();
+    if (t === '') return undefined;
+    if (this.isEnvTruthy(raw)) return true;
+    const f = t.toLowerCase();
+    if (f === '0' || f === 'false' || f === 'no' || f === 'off') {
+      return false;
+    }
+    return undefined;
+  }
+
+  private isEnvTruthy(raw: string | undefined): boolean {
+    if (raw === undefined || raw === '') return false;
+    const v = raw.trim().toLowerCase();
+    return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+  }
+
+  /**
+   * 消费模型流式块：向前端 yield 正文与思考增量（DashScope `reasoning_content` → `reasoning`）。
+   */
+  private async *streamAnswerWithThinkingLog(
+    stream: AsyncIterable<unknown>,
+  ): AsyncGenerator<StreamTextPiece, void, unknown> {
+    for await (const chunk of stream) {
+      if (!AIMessageChunk.isInstance(chunk)) continue;
+      const think = this.extractReasoningDeltaFromAiChunk(chunk);
+      const text = this.extractAnswerTextFromAiChunk(chunk);
+      if (think || text) {
+        yield {
+          ...(think ? { reasoning: think } : {}),
+          ...(text ? { content: text } : {}),
+        };
+      }
+    }
+  }
+
+  private extractReasoningDeltaFromAiChunk(chunk: AIMessageChunk): string {
+    const raw = chunk.additional_kwargs?.['reasoning_content'];
+    return typeof raw === 'string' ? raw : '';
+  }
+
+  /** 与 StringOutputParser 一致：只拼接正文 text，忽略 reasoning / tool 等块 */
+  private extractAnswerTextFromAiChunk(chunk: AIMessageChunk): string {
+    const c = chunk.content;
+    if (typeof c === 'string') return c;
+    if (!Array.isArray(c)) return '';
+    let out = '';
+    for (const part of c) {
+      if (typeof part === 'string') {
+        out += part;
+        continue;
+      }
+      if (
+        part !== null &&
+        typeof part === 'object' &&
+        'type' in part &&
+        typeof (part as { type: unknown }).type === 'string'
+      ) {
+        const tp = (part as { type: string }).type;
+        if (tp === 'text' || tp === 'text_delta') {
+          const tx = (part as { text?: string }).text;
+          if (typeof tx === 'string') out += tx;
+        }
+      }
+    }
+    return out;
   }
 
   /** 用于 SSE `model` 字段与 OpenAI 形 chunk */
@@ -62,7 +168,7 @@ export class LlmService {
     { role: 'user', content: '{input}' },
   ]);
 
-  /** 将模型消息块解析为纯文本 token 流 */
+  /** 标题链等非流式场景仍用字符串解析器 */
   private readonly stringOutputParser = new StringOutputParser();
 
   /** 首轮完成后：根据一问一答生成会话主题（列表展示用） */
@@ -84,37 +190,35 @@ export class LlmService {
    * @param sessionId 可选；传入时在同一会话内保留多轮上下文
    * @returns 流式输出
    */
-  async *chatStream(message: string, sessionId?: string) {
+  async *chatStream(
+    message: string,
+    sessionId?: string,
+  ): AsyncGenerator<StreamTextPiece, void, unknown> {
     const sid = sessionId?.trim();
     // 空会话 ID：不落库，直接流式返回（匿名一问一答）
     if (!sid) {
-      const chain = this.chatPromptTemplate
-        .pipe(this.chatModel)
-        .pipe(this.stringOutputParser);
+      const chain = this.chatPromptTemplate.pipe(this.chatModel);
       const stream = await chain.stream({ input: message });
-      for await (const chunk of stream) {
-        yield chunk;
-      }
+      yield* this.streamAnswerWithThinkingLog(stream);
       return;
     }
 
-    // 有会话 ID：保证会话行存在，并刷新 updatedAt（供列表按最近活动排序）
-    await this.prisma.chatSession.upsert({
-      where: { id: sid },
-      create: {
-        id: sid,
-        // 首轮用用户首句占位标题，后续可由 LLM 生成更短更准的标题覆盖
-        title: message.slice(0, 120) || null,
-      },
-      update: { updatedAt: new Date() },
-    });
-
-    // 按时间正序取出历史，拼成 LangChain 消息链
-    const messageHistoryList: ChatMessage[] =
-      await this.prisma.chatMessage.findMany({
+    // 有会话 ID：保证会话行存在，并拉历史；二者无先后依赖，并行可减少首包前 RTT
+    const [, messageHistoryList] = await Promise.all([
+      this.prisma.chatSession.upsert({
+        where: { id: sid },
+        create: {
+          id: sid,
+          // 首轮用用户首句占位标题，后续可由 LLM 生成更短更准的标题覆盖
+          title: message.slice(0, 120) || null,
+        },
+        update: { updatedAt: new Date() },
+      }),
+      this.prisma.chatMessage.findMany({
         where: { sessionId: sid },
         orderBy: { createdAt: 'asc' },
-      });
+      }),
+    ]);
 
     // 将 Prisma 查询结果转换为 LangChain 消息链
     // 1. 创建一个空数组来存储消息
@@ -130,19 +234,14 @@ export class LlmService {
     });
 
     // 创建 LangChain 链，将系统词 + 历史 + 当前用户输入作为输入，调用模型生成回复
-    const chain = this.sessionPromptTemplate
-      .pipe(this.chatModel)
-      .pipe(this.stringOutputParser);
+    const chain = this.sessionPromptTemplate.pipe(this.chatModel);
 
-    // 执行 LangChain 链，生成回复
     const stream = await chain.stream({ input: message, history });
 
-    // 一个空字符串，用于拼接助手回复
     let assistantText = '';
-    for await (const chunk of stream) {
-      // 边推送给前端边拼接助手回复
-      assistantText += chunk;
-      yield chunk;
+    for await (const piece of this.streamAnswerWithThinkingLog(stream)) {
+      if (piece.content) assistantText += piece.content;
+      yield piece;
     }
 
     // 本轮用户输入与完整助手回复成对落库
@@ -181,7 +280,7 @@ export class LlmService {
 
     //创建LangChain链，使用标题生成模板，生成标题
     const chain = this.sessionTitlePrompt
-      .pipe(this.chatModel)
+      .pipe(this.chatModelForTitle)
       .pipe(this.stringOutputParser);
 
     //用来存储标题生成结果
