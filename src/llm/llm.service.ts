@@ -24,27 +24,20 @@ const SESSION_SYSTEM_PROMPT = readFileSync(
   'utf8',
 ).trim();
 
-/** 封装通义千问（DashScope OpenAI 兼容）调用、会话持久化与标题生成 */
+/** 封装 DeepSeek（OpenAI 兼容）调用、会话持久化与标题生成 */
 @Injectable()
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
   private readonly chatModel: ChatOpenAI;
-  /** 标题生成不走联网，避免检索计费与不可控外部信息 */
   private readonly chatModelForTitle: ChatOpenAI;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    const apiKey = this.configService.get<string>('QWEN_API_KEY')?.trim();
-    const model = this.configService.get<string>('QWEN_MODEL')?.trim();
-    const baseURL = this.configService.get<string>('QWEN_BASE_URL')?.trim();
-    const enableSearch = this.isEnvTruthy(
-      this.configService.get<string>('QWEN_ENABLE_SEARCH'),
-    );
-    const enableThinking = this.parseOptionalThinkingFlag(
-      this.configService.get<string>('QWEN_ENABLE_THINKING'),
-    );
+    const apiKey = this.getEnvTrimmed('DEEPSEEK_API_KEY');
+    const model = 'deepseek-chat';
+    const baseURL ='https://api.deepseek.com/v1';
 
     const baseFields = {
       apiKey,
@@ -52,52 +45,25 @@ export class LlmService {
       configuration: { baseURL },
     };
 
-    const chatModelKwargs: Record<string, unknown> = {};
-    if (enableSearch) chatModelKwargs.enable_search = true;
-    if (enableThinking !== undefined) {
-      chatModelKwargs.enable_thinking = enableThinking;
-    }
-
-    // 百炼 Chat Completions：enable_search 见 https://help.aliyun.com/zh/model-studio/web-search
-    // enable_thinking 见 https://docs.qwencloud.com/developer-guides/text-generation/thinking
+    // DeepSeek / OpenAI 兼容 Chat Completions。
     this.chatModel = new ChatOpenAI({
       ...baseFields,
-      modelKwargs:
-        Object.keys(chatModelKwargs).length > 0 ? chatModelKwargs : undefined,
     });
-    /** 标题短句生成固定关思考，降低延迟与费用 */
+    /** 标题短句固定使用 deepseek-chat，避免 deepseek-reasoner 带来额外推理开销 */
     this.chatModelForTitle = new ChatOpenAI({
       ...baseFields,
-      modelKwargs: { enable_thinking: false },
+      model: 'deepseek-chat',
     });
   }
 
-  /**
-   * 解析 `QWEN_ENABLE_THINKING`：未设置或空字符串时不传参（走平台默认）；
-   * `1`/`true`/`yes`/`on` 为开；`0`/`false`/`no`/`off` 为关。
-   */
-  private parseOptionalThinkingFlag(
-    raw: string | undefined,
-  ): boolean | undefined {
-    if (raw === undefined) return undefined;
-    const t = raw.trim();
-    if (t === '') return undefined;
-    if (this.isEnvTruthy(raw)) return true;
-    const f = t.toLowerCase();
-    if (f === '0' || f === 'false' || f === 'no' || f === 'off') {
-      return false;
-    }
-    return undefined;
-  }
-
-  private isEnvTruthy(raw: string | undefined): boolean {
-    if (raw === undefined || raw === '') return false;
-    const v = raw.trim().toLowerCase();
-    return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+  /** 读取环境变量，trim 后为空则视为未设置 */
+  private getEnvTrimmed(key: string): string | undefined {
+    const v = this.configService.get<string>(key)?.trim();
+    return v || undefined;
   }
 
   /**
-   * 消费模型流式块：向前端 yield 正文与思考增量（DashScope `reasoning_content` → `reasoning`）。
+   * 消费模型流式块：向前端 yield 正文与思考增量（`reasoning_content` → `reasoning`）。
    */
   private async *streamAnswerWithThinkingLog(
     stream: AsyncIterable<unknown>,

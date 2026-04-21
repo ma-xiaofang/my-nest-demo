@@ -97,8 +97,8 @@ cd ..
 | 变量                  | 是否必填   | 说明                                                                                 |
 | ------------------- | ------ | ---------------------------------------------------------------------------------- |
 | `DATABASE_URL`      | **必填** | PostgreSQL 连接串，例如 `postgresql://USER:PASSWORD@localhost:5432/DBNAME?schema=public` |
-| `DEEPSEEK_API_KEY`  | 聊天功能必填 | DeepSeek API Key（或你自定义 `DEEPSEEK_BASE_URL` 所对应服务的 Key）                             |
-| `DEEPSEEK_BASE_URL` | 可选     | 默认 `https://api.deepseek.com`                                                      |
+| `DEEPSEEK_API_KEY`  | 聊天功能必填 | DeepSeek API Key                                                                    |
+| `DEEPSEEK_BASE_URL` | 可选     | 默认 `https://api.deepseek.com/v1`                                                   |
 | `DEEPSEEK_MODEL`    | 可选     | 默认 `deepseek-chat`                                                                 |
 | `SERVER_PORT`       | 可选     | HTTP 监听端口；未设置时默认为 **3001**（见 `src/main.ts`）                                        |
 
@@ -282,7 +282,7 @@ pnpm run build
 核对 `SERVER_PORT` 与 `ui/vite.config.ts` 中 `proxy.target` 是否一致；浏览器开发者工具里查看请求 URL 与状态码。
 
 **4. 聊天报 API Key 或上游错误**  
-确认 `DEEPSEEK_API_KEY` 有效；若使用代理或自建兼容网关，同步设置 `DEEPSEEK_BASE_URL` 与 `DEEPSEEK_MODEL`。
+确认 `DEEPSEEK_API_KEY` 有效，并检查 `DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL` 配置是否正确。
 
 ---
 
