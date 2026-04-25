@@ -9,9 +9,10 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ModelService {
+  private readonly llm: ChatOpenAI;
+
   constructor(
     private readonly configService: ConfigService,
-    private readonly llm: ChatOpenAI
   ) {
     this.llm = new ChatOpenAI({
       model: 'deepseek-chat', 

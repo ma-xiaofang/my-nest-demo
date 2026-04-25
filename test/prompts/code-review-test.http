@@ -1,0 +1,75 @@
+### 代码审查助手 - 测试1: JavaScript 函数审查
+POST http://localhost:3009/prompts/code-review-assistant
+Content-Type: application/json
+
+{
+    "codeStr": "function sum(a,b){return a+b;}",
+    "language": "JavaScript"
+}
+
+### 测试1 响应结果:
+# 审查维度评分:
+# | 审查维度 | 评分 | 说明 |
+# |---------|------|------|
+# | 语法规范 | ✅ 优秀 | 无语法问题 |
+# | 功能需求 | ⚠️ 良好 | 满足基本求和功能 |
+# | 安全要求 | ❌ 需改进 | + 运算符在遇到字符串时会变成连接符，存在类型混淆风险 |
+# | 可维护性 | ⚠️ 良好 | 缺少 JSDoc 注释和输入验证 |
+# Token: 输入 87 / 输出 1089 / 总计 1176
+
+### 代码审查助手 - 测试2: Python 代码审查
+POST http://localhost:3009/prompts/code-review-assistant
+Content-Type: application/json
+
+{
+    "codeStr": "def calc(x,y):\n    result = x*y\n    return result",
+    "language": "Python"
+}
+
+### 测试2 响应结果:
+# 审查维度评分:
+# | 审查维度 | 评分 | 说明 |
+# |---------|------|------|
+# | 语法规范 | ⚠️ 需改进 | 多句代码写在一行，违反 PEP 8 规范 |
+# | 功能需求 | ✅ 通过 | 正确实现乘法运算 |
+# | 安全要求 | ✅ 通过 | 纯数学运算，无安全漏洞 |
+# | 可维护性 | ❌ 不通过 | 缺乏 docstring、命名过于通用(calc)、缺少类型提示 |
+# Token: 输入 97 / 输出 951 / 总计 1048
+
+### 代码审查助手 - 测试3: 有安全问题的 SQL 查询
+POST http://localhost:3009/prompts/code-review-assistant
+Content-Type: application/json
+
+{
+    "codeStr": "const query = `SELECT * FROM users WHERE id = ${userId}`",
+    "language": "JavaScript"
+}
+
+### 测试3 响应结果:
+# 审查维度评分:
+# | 审查维度 | 评分 | 说明 |
+# |---------|------|------|
+# | 语法规范 | ✅ 正确 | 模板字符串语法正确 |
+# | 功能需求 | ❌ 不完整 | SQL 语句缺少实际查询值 |
+# | 安全要求 | ❌ 严重漏洞 | 存在 SQL 注入风险 |
+# | 可维护性 | ❌ 较差 | 变量名 query 过于通用，缺少注释 |
+# Token: 输入 93 / 输出 1186 / 总计 1279
+
+### 代码审查助手 - 测试4: uni-app 页面代码审查（含多个问题）
+POST http://localhost:3009/prompts/code-review-assistant
+Content-Type: application/json
+
+{
+    "codeStr": "<template>\n    <view class=\"container\">\n        <view v-for=\"item in list\" :key=\"item.id\">{{ item.name }}</view>\n        <button @click=\"loadData\">加载数据</button>\n        <button @click=\"delUser\">删除用户</button>\n    </view>\n</template>\n\n<script>\nexport default {\n    data() {\n        return {\n            list: [],\n            page: 1,\n        }\n    },\n    onLoad() {\n        this.loadData()\n    },\n    methods: {\n        loadData() {\n            uni.request({\n                url: 'https://api.example.com/user/list?page=' + this.page,\n                success: (res) => {\n                    this.list = res.data\n                    this.page++\n                }\n            })\n        },\n        delUser() {\n            const id = uni.getStorageSync('del_id')\n            uni.request({\n                url: 'https://api.example.com/user/delete',\n                method: 'POST',\n                data: {\n                    userId: id\n                },\n                success: (res) => {\n                    if (res.data.code === 0) {\n                        uni.showToast({ title: '删除成功' })\n                    }\n                }\n            })\n        }\n    }\n}\n</script>\n\n<style>\n.container {\n    padding: 20rpx;\n}\n</style>",
+    "language": "uni-app (Vue)"
+}
+
+### 测试4 响应结果:
+# 审查维度评分:
+# | 审查维度 | 评分 | 说明 |
+# |---------|------|------|
+# | 语法规范 | ❌ 不合格 | 按钮文本乱码(加载/删除) |
+# | 功能需求 | ❌ 不合格 | 逻辑不完整，缺乏反馈，交互糟糕 |
+# | 安全要求 | ❌ 严重不合格 | 未授权访问、数据可被篡改 |
+# | 可维护性 | ❌ 不合格 | API硬编码，无错误处理，扩展性差 |
+# Token: 输入 611 / 输出 2583 / 总计 3194
