@@ -62,10 +62,9 @@ export class RagService {
 
     this.docCount += documents.length;
     return {
-      success: true,
       originalDocs: documents.length,
       totalChunks: allDocs.length,
-      message: `已存入 ${documents.length} 篇文档（${allDocs.length} 个块）到 PostgreSQL`,
+      message: `已存入 ${documents.length} 篇文档（${allDocs.length} 个块）到向量数据库`,
     };
   }
 
@@ -94,22 +93,21 @@ export class RagService {
     if (!filtered.length) {
       return { question, answer: '知识库中没有找到相关内容!', sources: [] };
     }
-
     // 构建上下文
     const context: string = filtered
+    // 给每条检索到的文档块前面加一个序号标签 [序号]
       .map(([doc], i) => `[${i + 1}] ${doc.pageContent}`)
       .join('\n\n');
 
     const prompt = ChatPromptTemplate.fromMessages([
       [
         'system',
-        `你是知识库问答助手，严格基于参考资料回答。
+        `你是知识库问答助手，严格基于知识库回答。
         规则：
         1. 只根据参考资料内容回答，不能使用资料外的知识
         2. 资料中没有相关信息，回答"知识库中暂无相关内容"
         3. 回答简洁准确，使用中文
-
-        参考资料：
+        参考资料(RAG检索结果)：
         {context}`,
       ],
       ['human', '{question}'],

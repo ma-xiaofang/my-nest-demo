@@ -68,6 +68,9 @@ export class PgvectorService implements VectorStoreService {
 
   /**
    * 在向量库中执行带分数的相似度检索（分数越小越相似）。
+   * @param query 查询词
+   * @param topK 返回相似度最高的topK个结果
+   * @returns 相似度最高的topK个结果
    */
   async similaritySearchWithScore(
     query: string,
