@@ -14,7 +14,8 @@ export const checkOrderTool = tool(
   },
   {
     name: 'check_order',
-    description: '查询订单的当前状态。用户说"我的订单"、"订单到哪了"、"查一下订单 ORD-XXX"时调用。',
+    description:
+      '查询订单的当前状态。用户说"我的订单"、"订单到哪了"、"查一下订单 ORD-XXX"时调用。',
     schema: z.object({
       orderId: z.string().describe('订单号，格式为 ORD-XXXXXX'),
     }),

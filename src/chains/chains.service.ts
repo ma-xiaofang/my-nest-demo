@@ -127,14 +127,14 @@ export class ChainsService {
       REFUND: '你是退款专员，引导用户完成退款流程，态度友好。',
       COMPLAINT: '你是客户关系专员，认真对待投诉，给出解决方案。',
       OTHER: '你是通用客服，友好回答各类问题。',
-    }
+    };
     // 根据分类选择不同 Prompt
-    const systemPrompt = prompts[category] || prompts.OTHER
+    const systemPrompt = prompts[category] || prompts.OTHER;
     // 根据分类选择不同 Prompt 的链
     const answerPrompt = ChatPromptTemplate.fromMessages([
       ['system', systemPrompt],
       ['human', '{question}'],
-    ])
+    ]);
     const answerChain = answerPrompt.pipe(this.llm).pipe(this.parser);
     const answer = await answerChain.invoke({ question });
     return answer;

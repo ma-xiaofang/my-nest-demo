@@ -4,7 +4,10 @@ import { z } from 'zod';
 export const checkProductTool = tool(
   async ({ keyword }: { keyword: string }) => {
     // 模拟商品数据库（实际项目注入 PrismaService 查真实数据库）
-    const products: Record<string, { price: number; stock: number; category: string }> = {
+    const products: Record<
+      string,
+      { price: number; stock: number; category: string }
+    > = {
       'iPhone 16': { price: 7999, stock: 50, category: '手机' },
       'iPhone 16 Pro': { price: 9999, stock: 20, category: '手机' },
       'MacBook Pro': { price: 15999, stock: 8, category: '电脑' },
@@ -59,7 +62,9 @@ export const checkProductTool = tool(
     schema: z.object({
       keyword: z
         .string()
-        .describe('查询关键词，可为商品名或分类，如"iPhone 16"、"AirPods"、"耳机"'),
+        .describe(
+          '查询关键词，可为商品名或分类，如"iPhone 16"、"AirPods"、"耳机"',
+        ),
     }),
   },
 );

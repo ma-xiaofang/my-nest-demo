@@ -15,7 +15,17 @@ import { RagModule } from './rag/rag.module';
  * 应用根模块：注册根控制器与根服务。
  */
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, UserModule, LlmModule, ModelModule, PromptsModule, ChainsModule, AgentsModule, RagModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    PrismaModule,
+    UserModule,
+    LlmModule,
+    ModelModule,
+    PromptsModule,
+    ChainsModule,
+    AgentsModule,
+    RagModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

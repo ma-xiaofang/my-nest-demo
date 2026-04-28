@@ -1,7 +1,7 @@
 // src/user/dto/update-user.dto.ts
 export class UpdateUserDto {
-    name?: string
-    email?: string
-    password?: string
-    role?: string
-  }
+  name?: string;
+  email?: string;
+  password?: string;
+  role?: string;
+}

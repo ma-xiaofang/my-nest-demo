@@ -37,7 +37,7 @@ export class LlmService {
   ) {
     const apiKey = this.getEnvTrimmed('DEEPSEEK_API_KEY');
     const model = 'deepseek-chat';
-    const baseURL ='https://api.deepseek.com/v1';
+    const baseURL = 'https://api.deepseek.com/v1';
 
     const baseFields = {
       apiKey,
@@ -243,7 +243,6 @@ export class LlmService {
     user: string,
     assistant: string,
   ): Promise<void> {
-
     //创建LangChain链，使用标题生成模板，生成标题
     const chain = this.sessionTitlePrompt
       .pipe(this.chatModelForTitle)
@@ -283,7 +282,7 @@ export class LlmService {
     }
   }
 
-  /** 
+  /**
    * 去掉引号与多余空白，并截断为安全长度供 UI 展示
    * @param raw 原始标题
    * @returns 安全标题

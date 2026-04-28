@@ -103,7 +103,9 @@ export async function pipeTextIterableToOpenAiSse(
           model: modelName,
           delta: {
             ...(content !== undefined ? { content } : {}),
-            ...(reasoning !== undefined ? { reasoning_content: reasoning } : {}),
+            ...(reasoning !== undefined
+              ? { reasoning_content: reasoning }
+              : {}),
           },
           finish_reason: null,
         }),

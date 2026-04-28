@@ -11,7 +11,9 @@ export const createOrderTool = tool(
     quantity: number;
     customerName: string;
   }) => {
-    console.log(`[工具执行] create_order → ${customerName} 购买 ${productName} x${quantity}`);
+    console.log(
+      `[工具执行] create_order → ${customerName} 购买 ${productName} x${quantity}`,
+    );
 
     const prices: Record<string, number> = {
       'iPhone 16': 7999,

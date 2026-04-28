@@ -44,7 +44,10 @@ export class LlmController {
     @Query('userId') userIdRaw?: string,
     @Query('take') takeRaw?: string,
   ) {
-    const take = Math.min(100, Math.max(1, parseInt(takeRaw ?? '50', 10) || 50));
+    const take = Math.min(
+      100,
+      Math.max(1, parseInt(takeRaw ?? '50', 10) || 50),
+    );
     let userId: number | undefined;
     if (userIdRaw !== undefined && userIdRaw !== '') {
       userId = parseInt(userIdRaw, 10);
