@@ -1,18 +1,19 @@
 # LangChain AI大模型应用开发 NestJS版DEMO
 
-一个用于学习与演示的 **NestJS + Prisma + PostgreSQL + LangChain + Vue 3** 全栈项目：包含用户 CRUD、基于 **LangChain** 对接 **DeepSeek（OpenAI 兼容接口）** 的流式聊天，以及会话与消息的持久化。
+一个用于学习与演示的 **NestJS + Prisma + PostgreSQL + LangChain + Vue 3** 全栈项目：包含用户 CRUD、基于 **LangChain** 对接 **DeepSeek（OpenAI 兼容接口）** 的流式聊天、会话与消息持久化，以及基于向量检索的 RAG 问答。
 
 > **注意**：运行本项目需要先安装并可用数据库（PostgreSQL），并完成迁移与 `DATABASE_URL` 配置（详见下文「环境要求」「快速开始」）。
 
 ## 界面预览
 
-> **当前**：已实现 **聊天助手**（流式对话、会话与消息持久化、前端聊天页与侧栏历史等，见下方截图）。
+> **当前**：已实现 **聊天助手**（流式对话、会话与消息持久化、前端聊天页与侧栏历史等）与 **RAG（检索增强生成）** 后端能力。
 >
-> **后续**：**RAG（检索增强生成）** 与  WorkFlow **工作流**；具体排期与实现以仓库代码与变更记录为准。
+> **后续**：WorkFlow **工作流** 等能力会持续迭代；具体排期与实现以仓库代码与变更记录为准。
 
 ![聊天助手：新会话与侧栏历史](screenshots/image0.png)
 ![聊天助手：多轮对话与 Markdown 代码块](screenshots/image1.png)
 ![PostgreSQL：`chat_sessions` 会话表数据（Navicat）](screenshots/image3.png)
+![PostgreSQL：`langchain_pg_embedding` 向量数据表（Navicat）](screenshots/image4.png)
 
 ---
 
@@ -25,6 +26,7 @@
 | 流式聊天 | `POST /chat-stream` 返回纯文本分片流；`POST /chat-sse` 返回类 OpenAI 的 SSE `chat.completion.chunk` 帧                           |
 | 多轮会话 | 请求体携带 `sessionId`（UUID）时，从数据库读取历史消息、写入本轮用户与助手消息；首轮结束后会异步生成会话标题                                                     |
 | 会话列表 | `GET /chat-sessions` 按最近活动时间倒序返回会话摘要（可选 `userId`、`take`）；`GET /chat-sessions/:sessionId/messages` 拉取该会话全部消息（按时间升序） |
+| RAG 问答 | `POST /rag/load` 写入文档到向量库；`POST /rag/query` 执行检索增强问答（检索 + 生成） |
 | 前端   | Vue 3 + Vite + Tailwind，聊天页支持 Gemini 式侧栏历史、纯流 / SSE、Markdown 渲染（代码高亮、表格等）                                          |
 
 
@@ -34,6 +36,7 @@
 
 - **后端**：NestJS 11、`@nestjs/config`、Prisma 7、`@prisma/adapter-pg` + `pg`
 - **LLM**：`@langchain/openai`（`ChatOpenAI`）流式输出；默认对接 DeepSeek 官方兼容地址
+- **RAG / 向量检索**：`@langchain/community`（`PGVectorStore`）、`ZhipuAIEmbeddings`（默认 embedding-3）
 - **数据库**：PostgreSQL
 - **前端**：Vue 3、Vue Router、Vite 6、Tailwind CSS 4、`markdown-it`、DOMPurify、highlight.js
 
@@ -55,6 +58,10 @@
 │   │   ├── llm.controller.ts  # /chat-stream、/chat-sse、/chat-sessions、/chat-sessions/:id/messages
 │   │   ├── llm.service.ts     # LangChain 链路与会话持久化
 │   │   └── prompts/           # 构建时复制到 dist（见 nest-cli.json）
+│   ├── rag/
+│   │   ├── rag.controller.ts  # /rag/load、/rag/query
+│   │   ├── rag.service.ts     # 文档切分、检索、RAG 生成
+│   │   └── pgvector.service.ts# PGVector 向量库实现（可切换 Chroma）
 │   └── generated/prisma/      # prisma generate 输出（勿手改）
 └── ui/                        # 独立 Vite 前端工程
     ├── vite.config.ts         # 开发代理：/chat-stream、/chat-sse、/chat-sessions → 后端
@@ -98,6 +105,8 @@ cd ..
 | ------------------- | ------ | ---------------------------------------------------------------------------------- |
 | `DATABASE_URL`      | **必填** | PostgreSQL 连接串，例如 `postgresql://USER:PASSWORD@localhost:5432/DBNAME?schema=public` |
 | `DEEPSEEK_API_KEY`  | 聊天功能必填 | DeepSeek API Key                                                                    |
+| `GLM_API_KEY`       | RAG 功能必填 | 智谱 Embedding API Key（用于向量化）                                                |
+| `RAG_VECTOR_STORE`  | 可选     | 向量库提供者：`pgvector`（默认）或 `chroma`                                          |
 | `DEEPSEEK_BASE_URL` | 可选     | 默认 `https://api.deepseek.com/v1`                                                   |
 | `DEEPSEEK_MODEL`    | 可选     | 默认 `deepseek-chat`                                                                 |
 | `SERVER_PORT`       | 可选     | HTTP 监听端口；未设置时默认为 **3001**（见 `src/main.ts`）                                        |
@@ -108,6 +117,8 @@ cd ..
 ```env
 DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/my_nest_demo?schema=public"
 DEEPSEEK_API_KEY="sk-xxxxxxxx"
+GLM_API_KEY="xxxxxxxx"
+RAG_VECTOR_STORE="pgvector"
 SERVER_PORT=3009
 ```
 
@@ -133,7 +144,7 @@ pnpm exec prisma migrate dev
 pnpm exec prisma generate
 ```
 
-说明：本项目使用 **Prisma 7**，`schema.prisma` 中 `generator` 将 Client 输出到 `src/generated/prisma`，且 `moduleFormat = "cjs"` 以兼容 NestJS 的 CommonJS 构建。数据库连接串在 `**prisma.config.ts`** 中通过 `DATABASE_URL` 读取，CLI 执行迁移时同样会加载该配置。
+说明：本项目使用 **Prisma 7**，`schema.prisma` 中 `generator` 将 Client 输出到 `src/generated/prisma`，且 `moduleFormat = "cjs"` 以兼容 NestJS 的 CommonJS 构建。数据库连接串在 `prisma.config.ts` 中通过 `DATABASE_URL` 读取，CLI 执行迁移时同样会加载该配置。
 
 ### 4. 启动后端
 
@@ -165,9 +176,9 @@ pnpm run dev
 
 | 命令                    | 作用                                                                                                                                                                        |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `**prisma generate`** | 根据 `prisma/schema.prisma` 的 `generator` 重新生成 **Prisma Client**（本仓库输出到 `src/generated/prisma`）。**改模型后、CI 构建前、`pnpm install` 后若 Client 缺失**，都应执行；否则 TypeScript 或运行时会找不到新字段。 |
-| `**prisma validate`** | 校验 `schema.prisma` 语法与约束是否合法，**不改数据库、不写文件**。                                                                                                                              |
-| `**prisma format`**   | 按 Prisma 约定格式化 `schema.prisma`（缩进、换行等），便于提交统一风格的 diff。                                                                                                                    |
+| `prisma generate` | 根据 `prisma/schema.prisma` 的 `generator` 重新生成 **Prisma Client**（本仓库输出到 `src/generated/prisma`）。**改模型后、CI 构建前、`pnpm install` 后若 Client 缺失**，都应执行；否则 TypeScript 或运行时会找不到新字段。 |
+| `prisma validate` | 校验 `schema.prisma` 语法与约束是否合法，**不改数据库、不写文件**。                                                                                                                              |
+| `prisma format`   | 按 Prisma 约定格式化 `schema.prisma`（缩进、换行等），便于提交统一风格的 diff。                                                                                                                    |
 
 
 ### 与迁移（版本化 schema 变更）相关
@@ -175,10 +186,10 @@ pnpm run dev
 
 | 命令                           | 典型场景                | 说明                                                                                                                                      |
 | ---------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `**prisma migrate dev**`     | 本地开发、**需要新增/修改表结构** | 将当前 schema 与数据库对比，生成新的迁移 SQL 到 `prisma/migrations/`，并**应用**到当前 `DATABASE_URL` 指向的库；首次会建 `_prisma_migrations` 等元数据。会提示为迁移命名。适合个人/团队日常开发。 |
-| `**prisma migrate deploy`**  | 测试/预发/生产、CI         | **只执行** `prisma/migrations` 里尚未应用的迁移，**不会**根据 schema 自动生成新迁移。上线或新环境拉代码后用它对齐数据库结构。                                                       |
-| `**prisma migrate status`**  | 检查环境是否一致            | 列出迁移的已应用 / 待应用状态，排查「本地有迁移未推」「服务器缺迁移」等问题。                                                                                                |
-| `**prisma migrate resolve**` | 迁移历史与实际情况不一致时       | 将某条迁移标记为已应用或已回滚（高级用法，需对照官方文档谨慎使用）。                                                                                                      |
+| `prisma migrate dev`     | 本地开发、**需要新增/修改表结构** | 将当前 schema 与数据库对比，生成新的迁移 SQL 到 `prisma/migrations/`，并**应用**到当前 `DATABASE_URL` 指向的库；首次会建 `_prisma_migrations` 等元数据。会提示为迁移命名。适合个人/团队日常开发。 |
+| `prisma migrate deploy`  | 测试/预发/生产、CI         | **只执行** `prisma/migrations` 里尚未应用的迁移，**不会**根据 schema 自动生成新迁移。上线或新环境拉代码后用它对齐数据库结构。                                                       |
+| `prisma migrate status`  | 检查环境是否一致            | 列出迁移的已应用 / 待应用状态，排查「本地有迁移未推」「服务器缺迁移」等问题。                                                                                                |
+| `prisma migrate resolve` | 迁移历史与实际情况不一致时       | 将某条迁移标记为已应用或已回滚（高级用法，需对照官方文档谨慎使用）。                                                                                                      |
 
 
 ### 与数据库直接同步（非迁移文件流）
@@ -186,8 +197,8 @@ pnpm run dev
 
 | 命令                   | 典型场景               | 说明                                                                                                 |
 | -------------------- | ------------------ | -------------------------------------------------------------------------------------------------- |
-| `**prisma db push**` | 快速原型、个人临时库         | 把 schema **直接推到数据库**，**不**在 `prisma/migrations/` 下生成迁移文件。与「迁移驱动」团队协作时容易造成历史分叉，**正式环境慎用**；更适合本地试字段。 |
-| `**prisma db pull`** | 已有数据库、要反向生成 schema | 根据当前数据库结构**内省**并更新（或生成）`schema.prisma`，常用于接手工库后再纳入 Prisma 管理。                                      |
+| `prisma db push` | 快速原型、个人临时库         | 把 schema **直接推到数据库**，**不**在 `prisma/migrations/` 下生成迁移文件。与「迁移驱动」团队协作时容易造成历史分叉，**正式环境慎用**；更适合本地试字段。 |
+| `prisma db pull` | 已有数据库、要反向生成 schema | 根据当前数据库结构**内省**并更新（或生成）`schema.prisma`，常用于接手工库后再纳入 Prisma 管理。                                      |
 
 
 ### 开发与调试
@@ -195,8 +206,8 @@ pnpm run dev
 
 | 命令                         | 作用                                                                        |
 | -------------------------- | ------------------------------------------------------------------------- |
-| `**prisma studio`**        | 启动本地 Web 界面，浏览、筛选、编辑表数据；依赖 `DATABASE_URL`，**不会**替代应用里的业务校验。               |
-| `**prisma migrate reset`** | **删除数据库中所有数据**（或按 Prisma 行为重建），再按顺序应用全部迁移；可选执行 seed。仅用于开发环境，**切勿对生产库执行**。 |
+| `prisma studio`        | 启动本地 Web 界面，浏览、筛选、编辑表数据；依赖 `DATABASE_URL`，**不会**替代应用里的业务校验。               |
+| `prisma migrate reset` | **删除数据库中所有数据**（或按 Prisma 行为重建），再按顺序应用全部迁移；可选执行 seed。仅用于开发环境，**切勿对生产库执行**。 |
 
 
 ### 本仓库推荐用法小结
@@ -215,18 +226,27 @@ pnpm run dev
 
 ### 聊天
 
-- `**POST /chat-stream`**  
+- `POST /chat-stream`  
   - Body：`{ "message": string, "sessionId"?: string }`  
   - 响应：纯文本流（逐块 `write`），适合 `fetch` + `ReadableStream` 解析。
-- `**POST /chat-sse**`  
+- `POST /chat-sse`  
   - Body：同上。  
   - 响应：SSE，载荷为 OpenAI 风格的 `chat.completion.chunk` JSON 行，便于与现有 SSE 客户端对齐。
-- `**GET /chat-sessions**`  
+- `GET /chat-sessions`  
   - Query：`userId`（可选，数字）、`take`（可选，默认 50，最大 100）  
   - 返回：会话列表（含 `messageCount` 等）。
-- `**GET /chat-sessions/:sessionId/messages**`  
+- `GET /chat-sessions/:sessionId/messages`  
   - Path：`sessionId` 为会话 UUID（勿为空）  
   - 返回：`{ role, content }[]`（`role` 为 `user` / `assistant`），按 `createdAt` 升序，供前端恢复历史气泡。
+
+### RAG（前缀 `/rag`）
+
+- `POST /rag/load`  
+  - Body：`{ "documents": [{ "id": string, "content": string, "source"?: string }] }`  
+  - 作用：将原始文档切分后写入向量库，返回文档数与切分块数。
+- `POST /rag/query`  
+  - Body：`{ "question": string, "topK"?: number }`  
+  - 作用：执行向量检索 + 生成回答，返回 `answer` 与命中 `sources`（含相似度）。
 
 ### 用户（前缀 `/user`）
 
@@ -266,7 +286,7 @@ cd ui
 pnpm run build
 ```
 
-生产环境下，浏览器会直接请求你配置的 API 源。可通过 `**VITE_API_BASE**` 指向后端完整地址（例如 `https://api.example.com`），未设置时为空字符串，即与页面**同源**路径（需由 Nginx 等反向代理把 `/chat-stream`、`/chat-sse`、`/chat-sessions` 等转到 Nest）。
+生产环境下，浏览器会直接请求你配置的 API 源。可通过 `VITE_API_BASE` 指向后端完整地址（例如 `https://api.example.com`），未设置时为空字符串，即与页面**同源**路径（需由 Nginx 等反向代理把 `/chat-stream`、`/chat-sse`、`/chat-sessions` 等转到 Nest）。
 
 ---
 
@@ -283,6 +303,9 @@ pnpm run build
 
 **4. 聊天报 API Key 或上游错误**  
 确认 `DEEPSEEK_API_KEY` 有效，并检查 `DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL` 配置是否正确。
+
+**5. RAG 写入或检索报 embedding/向量化错误**  
+确认 `GLM_API_KEY` 已配置且可用；若切换向量库实现，检查 `RAG_VECTOR_STORE` 是否为 `pgvector` 或 `chroma`。
 
 ---
 

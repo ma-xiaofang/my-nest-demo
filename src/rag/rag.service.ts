@@ -85,11 +85,9 @@ export class RagService {
       question,
       topK,
     );
-
     // score 是距离，越小越相关
     // 滤除距离 > 0.5 的结果只要相似度大于0.5的,距离越远相似度越低,越不相关
     const filtered: [Document, number][] = retrieved.filter(([, score]) => score <= 0.5);
-
     if (!filtered.length) {
       return { question, answer: '知识库中没有找到相关内容!', sources: [] };
     }
