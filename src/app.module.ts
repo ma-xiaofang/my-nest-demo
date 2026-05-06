@@ -10,6 +10,7 @@ import { PromptsModule } from './prompts/prompts.module';
 import { ChainsModule } from './chains/chains.module';
 import { AgentsModule } from './agents/agents.module';
 import { RagModule } from './rag/rag.module';
+import { LanggraphModule } from './langgraph/langgraph.module';
 
 /**
  * 应用根模块：注册根控制器与根服务。
@@ -25,6 +26,7 @@ import { RagModule } from './rag/rag.module';
     ChainsModule,
     AgentsModule,
     RagModule,
+    LanggraphModule,
   ],
   controllers: [AppController],
   providers: [AppService],
