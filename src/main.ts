@@ -1,6 +1,8 @@
 /**
  * 应用入口：创建 Nest 应用并监听端口。
  */
+// 尽早加载根目录 `.env`，避免其它模块在 import 阶段读取 `process.env` 时尚未注入（与 ConfigModule 互补）
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';

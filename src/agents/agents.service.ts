@@ -8,7 +8,7 @@ import {
   SystemMessage,
   BaseMessage,
 } from '@langchain/core/messages';
-import { allAgentTools, agentToolMap } from './tools';
+import { buildAgentTools } from './tools';
 @Injectable()
 export class AgentsService {
   constructor(private readonly config: ConfigService) {
@@ -28,8 +28,7 @@ export class AgentsService {
    * @returns 运行结果
    */
   async runAgent(userMessage: string) {
-    const tools = allAgentTools;
-    const toolMap: Record<string, any> = agentToolMap;
+    const { tools, toolMap } = buildAgentTools();
     // bindTools：把工具列表注册到模型
     // 注册后模型回复里会包含 tool_calls 字段（当它决定调用工具时）
     const llmWithTools = this.llm.bindTools(tools);
