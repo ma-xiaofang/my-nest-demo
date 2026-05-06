@@ -14,11 +14,10 @@ export class RagController {
   ) {
     return this.ragService.loadDocuments(body.documents);
   }
-  
+
   // POST /rag/query → 完整 RAG 问答
   @Post('query')
   query(@Body() body: { question: string; topK?: number }) {
-    return this.ragService.query(body.question, body.topK)
+    return this.ragService.query(body.question, body.topK);
   }
-  
 }

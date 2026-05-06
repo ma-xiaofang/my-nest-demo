@@ -4,6 +4,6 @@ import { Module } from '@nestjs/common';
   imports: [],
   controllers: [],
   providers: [],
-  exports: []
+  exports: [],
 })
 export class TechResearchModuleModule {}

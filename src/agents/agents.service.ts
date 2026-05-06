@@ -33,7 +33,7 @@ export class AgentsService {
     // bindTools：把工具列表注册到模型
     // 注册后模型回复里会包含 tool_calls 字段（当它决定调用工具时）
     const llmWithTools = this.llm.bindTools(tools);
-    // 消息历史数组：Agent 每一轮都能看到完整的对话 + 工具结果
+    // System 消息：设定客服角色和行为规范
     const messages: BaseMessage[] = [
       // System 消息：设定客服角色和行为规范
       new SystemMessage(
@@ -43,11 +43,13 @@ export class AgentsService {
          - create_order：为客户创建订单
          - check_order：查询订单状态
          - apply_refund：申请退款
+         - web_search：联网搜索实时信息（如行业新闻、竞品对比、物流政策等）
         工作原则：
          1. 先用工具获取真实信息，再给客户答复
          2. 下单前必须先查询库存确认有货
-         3.下单需要知道客户姓名，如果用户没说，主动询问
-         4. 回答简洁友好，使用中文`,
+         3. 下单需要知道客户姓名，如果用户没说，主动询问
+         4. 对于需要外部事实支撑的问题（如政策、新闻），优先使用 web_search 获取权威信息
+         5. 回答简洁友好，使用中文`,
       ),
       new HumanMessage(userMessage),
     ];

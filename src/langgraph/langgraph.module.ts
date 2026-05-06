@@ -4,7 +4,7 @@ import { LanggraphService } from './langgraph.service';
 import { LanggraphController } from './langgraph.controller';
 
 @Module({
-  providers: [ ArticleService,LanggraphService],
-  controllers: [LanggraphController]
+  providers: [ArticleService, LanggraphService],
+  controllers: [LanggraphController],
 })
 export class LanggraphModule {}

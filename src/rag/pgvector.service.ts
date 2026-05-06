@@ -106,7 +106,10 @@ export class PgvectorService implements VectorStoreService {
   private async initializeVectorStore(): Promise<PGVectorStore> {
     await this.ensureCollectionSchemaReady();
     try {
-      return await PGVectorStore.initialize(this.embeddings, this.pgVectorConfig);
+      return await PGVectorStore.initialize(
+        this.embeddings,
+        this.pgVectorConfig,
+      );
     } catch (error: unknown) {
       const duplicateColumnErrorCode = '42701';
       if (
@@ -175,7 +178,9 @@ export class PgvectorService implements VectorStoreService {
   /**
    * 类型守卫：判断是否为 PostgreSQL 错误对象。
    */
-  private isPgError(error: unknown): error is { code?: string; message: string } {
+  private isPgError(
+    error: unknown,
+  ): error is { code?: string; message: string } {
     return (
       typeof error === 'object' &&
       error !== null &&

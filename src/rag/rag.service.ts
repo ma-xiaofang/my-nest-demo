@@ -57,7 +57,7 @@ export class RagService {
       );
       allDocs.push(...chunks);
     }
-    // 将块和向量存储到向量数据库 
+    // 将块和向量存储到向量数据库
     await this.vectorStoreService.addDocuments(allDocs);
 
     this.docCount += documents.length;
@@ -81,19 +81,19 @@ export class RagService {
    */
   async query(question: string, topK = 3) {
     // 向量数据库查询：相似度搜索，返回相似度最高的topK个结果
-    const retrieved: [Document, number][] = await this.vectorStoreService.similaritySearchWithScore(
-      question,
-      topK,
-    );
+    const retrieved: [Document, number][] =
+      await this.vectorStoreService.similaritySearchWithScore(question, topK);
     // score 是距离，越小越相关
     // 滤除距离 > 0.5 的结果只要相似度大于0.5的,距离越远相似度越低,越不相关
-    const filtered: [Document, number][] = retrieved.filter(([, score]) => score <= 0.5);
+    const filtered: [Document, number][] = retrieved.filter(
+      ([, score]) => score <= 0.5,
+    );
     if (!filtered.length) {
       return { question, answer: '知识库中没有找到相关内容!', sources: [] };
     }
     // 构建上下文
     const context: string = filtered
-    // 给每条检索到的文档块前面加一个序号标签 [序号]
+      // 给每条检索到的文档块前面加一个序号标签 [序号]
       .map(([doc], i) => `[${i + 1}] ${doc.pageContent}`)
       .join('\n\n');
 
