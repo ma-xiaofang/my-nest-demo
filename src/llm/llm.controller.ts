@@ -8,6 +8,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { LlmService } from './llm.service';
 import type { Response } from 'express';
 import {
@@ -18,14 +19,14 @@ import {
 
 type ChatBody = { message: string; sessionId?: string };
 
+@ApiTags('LLM 聊天')
 @Controller()
 export class LlmController {
   constructor(private readonly llmService: LlmService) {}
 
-  /**
-   * 拉取某会话的消息列表（按创建时间升序）
-   */
   @Get('/chat-sessions/:sessionId/messages')
+  @ApiOperation({ summary: '获取会话消息列表' })
+  @ApiParam({ name: 'sessionId', description: '会话ID' })
   async getSessionMessages(@Param('sessionId') sessionId: string) {
     const sid = sessionId?.trim();
     if (!sid) {
@@ -34,12 +35,10 @@ export class LlmController {
     return this.llmService.getSessionMessages(sid);
   }
 
-  /**
-   * 查询会话列表（最近更新在前）
-   * @param userId 可选，只查该用户的会话
-   * @param take 条数上限，默认 50，最大 100
-   */
   @Get('/chat-sessions')
+  @ApiOperation({ summary: '查询会话列表' })
+  @ApiQuery({ name: 'userId', required: false, description: '用户ID' })
+  @ApiQuery({ name: 'take', required: false, description: '条数上限，默认50' })
   async listChatSessions(
     @Query('userId') userIdRaw?: string,
     @Query('take') takeRaw?: string,
@@ -58,13 +57,8 @@ export class LlmController {
     return this.llmService.listChatSessions({ userId, take });
   }
 
-  /**
-   * 聊天流式输出
-   * @param body 请求体
-   * @param response 响应
-   * @returns 裸流式输出，需要前端自己处理
-   */
   @Post('/chat-stream')
+  @ApiOperation({ summary: '聊天流式输出（裸流）' })
   async chatStream(@Body() body: ChatBody, @Res() response: Response) {
     applyPlainStreamHeaders(response);
     for await (const piece of this.llmService.chatStream(
@@ -82,10 +76,8 @@ export class LlmController {
     response.end();
   }
 
-  /**
-   * 聊天 SSE：OpenAI `chat.completion.chunk` 帧
-   */
   @Post('/chat-sse')
+  @ApiOperation({ summary: '聊天 SSE 输出（OpenAI 格式）' })
   async chatSSE(@Body() body: ChatBody, @Res() response: Response) {
     applySseHeaders(response);
     await pipeTextIterableToOpenAiSse(

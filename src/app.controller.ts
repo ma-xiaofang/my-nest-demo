@@ -1,18 +1,14 @@
 import { Controller, Get } from '@nestjs/common';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AppService } from './app.service';
 
-/**
- * 根控制器：暴露基础 HTTP 路由。
- */
+@ApiTags('默认')
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
   @Get()
-  /**
-   * 根路径 GET：返回欢迎文案。
-   * @returns 问候字符串
-   */
+  @ApiOperation({ summary: '欢迎页面' })
   getHello(): string {
     return this.appService.getHello();
   }

@@ -1,11 +1,14 @@
 import { Body, Controller, Post } from '@nestjs/common';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { RagService } from './rag.service';
 
+@ApiTags('RAG 检索增强')
 @Controller('rag')
 export class RagController {
   constructor(private readonly ragService: RagService) {}
 
   @Post('load')
+  @ApiOperation({ summary: '加载文档到向量库' })
   loadDocuments(
     @Body()
     body: {
@@ -15,8 +18,8 @@ export class RagController {
     return this.ragService.loadDocuments(body.documents);
   }
 
-  // POST /rag/query → 完整 RAG 问答
   @Post('query')
+  @ApiOperation({ summary: 'RAG 问答查询' })
   query(@Body() body: { question: string; topK?: number }) {
     return this.ragService.query(body.question, body.topK);
   }

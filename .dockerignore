@@ -1,0 +1,17 @@
+node_modules
+dist
+coverage
+.git
+.env
+.env.*
+!.env.example
+
+ui
+test
+screenshots
+*.md
+!src/**/*.md
+
+.DS_Store
+.vscode
+.idea

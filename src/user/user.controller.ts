@@ -12,50 +12,49 @@ import {
   ParseIntPipe,
   Inject,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
 
+@ApiTags('用户管理')
 @Controller('user')
 export class UserController {
   @Inject()
   private readonly userService: UserService;
 
-  // POST /user/create → 创建用户
   @Post('create')
+  @ApiOperation({ summary: '创建用户' })
   create(@Body() dto: CreateUserDto) {
     return this.userService.create(dto);
   }
 
-  // GET /user/list                           → 查询第 1 页，每页 10 条
-  // GET /user/list?page=2&pageSize=5         → 查询第 2 页，每页 5 条
-  // GET /user/list?name=大伟                  → 按名字模糊搜索
-  // GET /user/list?role=admin                → 只查管理员
-  // GET /user/list?page=1&pageSize=10&name=陈大伟&role=admin → 组合查询
   @Get('list')
+  @ApiOperation({ summary: '查询用户列表（分页+筛选）' })
   findAll(
-    // @Query() 把 URL 中所有 query 参数解析成 QueryUserDto 对象
-    // 例如 ?page=2&pageSize=5&name=大伟 → { page: '2', pageSize: '5', name: '大伟' }
     @Query() query: QueryUserDto,
   ) {
     return this.userService.findAll(query);
   }
 
-  // GET /user/1 → 查询单个用户（含文章列表）
   @Get(':id')
+  @ApiOperation({ summary: '查询单个用户' })
+  @ApiParam({ name: 'id', description: '用户ID' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.userService.findOne(id);
   }
 
-  // PUT /user/1 → 更新用户
   @Put(':id')
+  @ApiOperation({ summary: '更新用户' })
+  @ApiParam({ name: 'id', description: '用户ID' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
     return this.userService.update(id, dto);
   }
 
-  // DELETE /user/1 → 删除用户
   @Delete(':id')
+  @ApiOperation({ summary: '删除用户' })
+  @ApiParam({ name: 'id', description: '用户ID' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.userService.remove(id);
   }
