@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AppService } from './app.service';
 
 @ApiTags('默认')
@@ -9,6 +9,7 @@ export class AppController {
 
   @Get()
   @ApiOperation({ summary: '欢迎页面' })
+  @ApiResponse({ status: 200, description: '欢迎文案', example: 'Hello World!' })
   getHello(): string {
     return this.appService.getHello();
   }

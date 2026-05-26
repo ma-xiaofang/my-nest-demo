@@ -5,6 +5,7 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { apiReference } from '@scalar/nestjs-api-reference';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 
@@ -23,7 +24,7 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
 
-  // ─── Swagger / OpenAPI 文档配置 ───
+  // ─── OpenAPI 文档配置 ───
   const config = new DocumentBuilder()
     .setTitle('My Nest Demo API')
     .setDescription('NestJS + Prisma + LangChain 全栈应用 API 文档')
@@ -31,12 +32,29 @@ async function bootstrap() {
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api-docs', app, document);
+
+  // Scalar API 文档（带左侧导航栏）
+  app.use(
+    '/api-docs',
+    apiReference({
+      theme: 'purple',
+      //darkMode: true,            // 默认暗黑模式
+      layout: 'modern',
+      hideModels: false,
+      spec: { content: document },
+    }),
+  );
+
+  // OpenAPI JSON 端点（供导出脚本 / 前端调用）
+  app.use('/api-docs-json', (req: any, res: any) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(document);
+  });
 
   const port = configService.get<number>('SERVER_PORT') ?? 3001;
   await app.listen(port, () => {
     console.log(`Server is running at http://localhost:${port}`);
-    console.log(`Swagger docs at http://localhost:${port}/api-docs`);
+    console.log(`API docs at http://localhost:${port}/api-docs`);
   });
 }
 bootstrap();
